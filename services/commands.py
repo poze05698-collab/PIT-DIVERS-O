@@ -1,0 +1,6 @@
+from aiogram import Bot
+from aiogram.types import BotCommand,BotCommandScopeAllGroupChats,BotCommandScopeAllPrivateChats
+async def setup_commands(bot:Bot):
+ cs='start pit bil ajuda desafio adivinha imagem ranking meuspontos perfil quem seguir parar seguidores piada sorte conselho horoscopo quiz dado caraoucoroa parouimpar ppp matematica embaralhada verdadeirooufalso forca feedback giveaway entrargiveaway sortear'.split()
+ desc={'start':'Iniciar','pit':'Menu PIT','bil':'Status','ajuda':'Ajuda','desafio':'Desafio','adivinha':'Adivinha','imagem':'Desafio com imagem','ranking':'Ranking semanal','meuspontos':'Meus pontos','perfil':'Perfil','quem':'Ver perfil','seguir':'Seguir','parar':'Deixar de seguir','seguidores':'Seguidores','piada':'Piada','sorte':'Sorte','conselho':'Conselho','horoscopo':'Horóscopo','quiz':'Quiz','dado':'Dado','caraoucoroa':'Moeda','parouimpar':'Par ou ímpar','ppp':'Pedra papel tesoura','matematica':'Matemática','embaralhada':'Palavra embaralhada','verdadeirooufalso':'Verdadeiro ou falso','forca':'Forca','feedback':'Feedback','giveaway':'Sorteio','entrargiveaway':'Entrar no sorteio','sortear':'Sortear giveaway'}
+ cmds=[BotCommand(command=x,description=desc.get(x,x)) for x in cs]; await bot.set_my_commands(cmds,scope=BotCommandScopeAllGroupChats()); await bot.set_my_commands(cmds,scope=BotCommandScopeAllPrivateChats())
