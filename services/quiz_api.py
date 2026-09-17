@@ -1,191 +1,381 @@
 # -*- coding: utf-8 -*-
 """
-Fonte externa de perguntas em português para o PIT DIVERSÃO.
-
-A biblioteca local de milhares de perguntas foi removida.
-O bot consulta a API sob demanda e mantém somente algumas respostas recentes
-em memória para evitar chamadas desnecessárias.
+Fonte de perguntas para o PIT DIVERSÃO.
+Usa uma API externa e mantém um pequeno cache em memória.
 """
+
 import json
 import random
-import urllib.parse
 import urllib.request
-from typing import Any
+import urllib.parse
+import html
 
+# API atual
 API_URL = "https://www.codesnippets.dev.br/public/api/quizzes/v1/questions"
-_TIMEOUT = 10
-_CACHE: list[dict] = []
-_RECENT_IDS: list[str] = []
+
+_TIMEOUT = 15
+_CACHE = []
+_RECENT_IDS = []
 
 
-def _request(url: str) -> Any:
+def _request(url):
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "PIT-DIVERSAO/1.0",
+            "User-Agent": "Mozilla/5.0 PIT-DIVERSAO",
             "Accept": "application/json",
         },
     )
+
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as response:
-        return json.loads(response.read().decode("utf-8"))
+        if response.status != 200:
+            raise RuntimeError(
+                f"API retornou HTTP {response.status}"
+            )
+
+        raw = response.read().decode("utf-8")
+        return json.loads(raw)
 
 
-def _unwrap(data: Any) -> list:
+def _clean(value):
+    if value is None:
+        return ""
+
+    value = html.unescape(str(value))
+
+    return " ".join(
+        value.replace("\n", " ").split()
+    ).strip()
+
+
+def _unwrap(data):
     if isinstance(data, list):
         return data
+
     if isinstance(data, dict):
-        for key in ("questions", "data", "results", "items", "records"):
+        # Formatos possíveis da API
+        for key in (
+            "questions",
+            "data",
+            "results",
+            "items",
+            "records",
+        ):
             value = data.get(key)
+
             if isinstance(value, list):
                 return value
+
             if isinstance(value, dict):
                 nested = _unwrap(value)
+
                 if nested:
                     return nested
+
     return []
 
 
-def _first(item: dict, *keys):
+def _first(item, *keys):
     for key in keys:
         value = item.get(key)
-        if value not in (None, "", []):
+
+        if value not in (
+            None,
+            "",
+            [],
+        ):
             return value
+
     return None
 
 
-def _clean(value) -> str:
-    return " ".join(str(value or "").replace("\n", " ").split()).strip()
+def normalize(item):
+    """
+    Converte o formato da API para o formato usado pelo bot.
+    """
 
-
-def normalize(item: dict):
     if not isinstance(item, dict):
         return None
 
-    question = _clean(_first(
-        item, "question", "questionText", "text", "enunciado",
-        "pergunta", "title"
-    ))
+    question = _clean(
+        _first(
+            item,
+            "question",
+            "questionText",
+            "text",
+            "enunciado",
+            "pergunta",
+            "title",
+        )
+    )
+
+    if not question:
+        return None
+
+    # ---------------------------------------------------------
+    # ALTERNATIVAS
+    # ---------------------------------------------------------
 
     raw_options = _first(
-        item, "options", "alternatives", "alternativas",
-        "opcoes", "choices", "answers"
+        item,
+        "options",
+        "alternatives",
+        "alternativas",
+        "opcoes",
+        "choices",
+        "answers",
     )
+
     options = []
     correct = None
 
     if isinstance(raw_options, dict):
-        raw_options = list(raw_options.values())
+        raw_options = list(
+            raw_options.values()
+        )
 
     if isinstance(raw_options, list):
+
         for opt in raw_options:
+
             if isinstance(opt, dict):
-                text = _clean(_first(
-                    opt, "text", "answer", "answerText", "option",
-                    "label", "value", "resposta"
-                ))
-                is_correct = bool(_first(
-                    opt, "isCorrect", "correct", "is_correct", "correta"
-                ))
-                if is_correct:
+
+                text = _clean(
+                    _first(
+                        opt,
+                        "text",
+                        "answer",
+                        "answerText",
+                        "option",
+                        "label",
+                        "value",
+                        "resposta",
+                    )
+                )
+
+                correct_flag = _first(
+                    opt,
+                    "isCorrect",
+                    "correct",
+                    "is_correct",
+                    "correta",
+                )
+
+                if correct_flag is True:
                     correct = text
+
             else:
                 text = _clean(opt)
+
             if text:
                 options.append(text)
 
-    answer = _clean(_first(
-        item, "answer", "correct_answer", "correctAnswer",
-        "correct", "resposta", "resposta_correta", "gabarito"
-    ))
+    # ---------------------------------------------------------
+    # RESPOSTA CORRETA
+    # ---------------------------------------------------------
 
-    # Algumas APIs retornam apenas o índice da alternativa correta.
-    if isinstance(answer, int) and 0 <= answer < len(options):
-        answer = options[answer]
-    elif isinstance(answer, str) and answer.isdigit():
-        idx = int(answer)
-        if 0 <= idx < len(options):
-            answer = options[idx]
+    answer = _first(
+        item,
+        "answer",
+        "correct_answer",
+        "correctAnswer",
+        "correct",
+        "resposta",
+        "resposta_correta",
+        "gabarito",
+    )
+
+    # Resposta por índice
+    if isinstance(answer, int):
+
+        if 0 <= answer < len(options):
+            answer = options[answer]
+
+    elif isinstance(answer, str):
+
+        answer = _clean(answer)
+
+        if answer.isdigit():
+
+            index = int(answer)
+
+            if 0 <= index < len(options):
+                answer = options[index]
+
+    answer = _clean(answer)
 
     if not answer:
         answer = correct
 
-    if not question or not answer:
+    answer = _clean(answer)
+
+    if not answer:
         return None
 
-    # Se a API não trouxer alternativas, esta pergunta não serve para
-    # o sistema de botões do PIT DIVERSÃO.
-    if len(options) < 2:
-        return None
+    # ---------------------------------------------------------
+    # GARANTIR ALTERNATIVAS
+    # ---------------------------------------------------------
 
-    # Garante que a resposta correta esteja entre as alternativas.
+    options = [
+        _clean(option)
+        for option in options
+        if _clean(option)
+    ]
+
+    # Remove duplicadas
+    options = list(
+        dict.fromkeys(options)
+    )
+
+    # Coloca a correta entre as opções
     if answer not in options:
         options.append(answer)
 
-    # Remove duplicadas preservando ordem.
-    options = list(dict.fromkeys(options))
+    # Precisamos de pelo menos duas opções
     if len(options) < 2:
         return None
 
-    category = _clean(_first(
-        item, "category", "categoria", "subject", "tema", "type"
-    )) or "Conhecimentos gerais"
+    # No máximo 6 botões
+    options = options[:6]
 
-    uid = str(_first(item, "id", "question_id", "questionId", "uuid") or question)
+    # Se a resposta acabou ficando fora
+    # das primeiras 6, substituímos a última.
+    if answer not in options:
+        options[-1] = answer
+
+    # ---------------------------------------------------------
+    # CATEGORIA
+    # ---------------------------------------------------------
+
+    category = _clean(
+        _first(
+            item,
+            "category",
+            "categoria",
+            "subject",
+            "tema",
+            "type",
+        )
+    )
+
+    if not category:
+        category = "Conhecimentos gerais"
+
+    # ---------------------------------------------------------
+    # ID
+    # ---------------------------------------------------------
+
+    uid = _first(
+        item,
+        "id",
+        "question_id",
+        "questionId",
+        "uuid",
+    )
+
+    if not uid:
+        uid = question
+
     return {
-        "id": uid,
+        "id": str(uid),
         "category": category,
         "question": question,
         "answer": answer,
-        "options": options[:6],
+        "options": options,
     }
 
 
-def _load() -> list[dict]:
+def _load():
     global _CACHE
+
     data = _request(API_URL)
-    raw = _unwrap(data)
+
+    raw_questions = _unwrap(data)
+
     parsed = []
-    for item in raw:
-        q = normalize(item)
-        if q:
-            parsed.append(q)
+
+    for item in raw_questions:
+
+        question = normalize(item)
+
+        if question:
+            parsed.append(question)
+
     if parsed:
         _CACHE = parsed
+
     return _CACHE
 
 
-def fetch_question() -> dict | None:
-    """Busca uma questão em português com alternativas."""
+def fetch_question():
+    """
+    Busca uma pergunta nova.
+    """
+
     global _RECENT_IDS
 
-    candidates = _CACHE[:]
-    try:
-        if not candidates:
-            candidates = _load()
-    except Exception:
-        candidates = _CACHE[:]
+    candidates = []
 
+    # Primeiro tenta usar o cache
+    if _CACHE:
+        candidates = _CACHE
+
+    # Se não houver cache, consulta a API
+    else:
+        try:
+            candidates = _load()
+        except Exception:
+            candidates = []
+
+    # API não respondeu
     if not candidates:
         return None
 
-    available = [q for q in candidates if q["id"] not in _RECENT_IDS]
+    # Evita repetir imediatamente
+    available = [
+        question
+        for question in candidates
+        if question["id"] not in _RECENT_IDS
+    ]
+
+    # Se todas já foram usadas,
+    # libera novamente.
     if not available:
         _RECENT_IDS.clear()
         available = candidates
 
-    q = random.choice(available)
-    _RECENT_IDS.append(q["id"])
+    question = random.choice(
+        available
+    )
+
+    _RECENT_IDS.append(
+        question["id"]
+    )
+
+    # Mantém somente os últimos 100
     if len(_RECENT_IDS) > 100:
         del _RECENT_IDS[:-100]
 
-    result = dict(q)
-    result["options"] = list(q["options"])
-    random.shuffle(result["options"])
+    result = dict(question)
+
+    result["options"] = list(
+        question["options"]
+    )
+
+    random.shuffle(
+        result["options"]
+    )
+
     return result
 
 
 def refresh():
-    """Força uma nova leitura da API."""
+    """
+    Força uma nova consulta à API.
+    """
+
     global _CACHE
+
     _CACHE = []
+
     return _load()
