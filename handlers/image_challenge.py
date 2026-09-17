@@ -114,9 +114,14 @@ async def send_image_challenge(message_or_bot, chat_id: int, points: int = 15):
 
     await message_or_bot.send_photo(
         chat_id=chat_id,
-        photo=BufferedInputFile(image.getvalue(), filename="desafio_visual.png"),
+        photo=BufferedInputFile(
+            image.getvalue(),
+            filename="desafio_visual.png"
+        ),
         caption=caption,
         reply_markup=markup,
+        # O Telegram esconde a imagem até o usuário tocar nela.
+        has_spoiler=True,
     )
     return True
 
