@@ -53,5 +53,7 @@ def choose_question(group_id=None, category=None):
     # Se a API estiver com poucas questões disponíveis, ainda devolve uma válida.
     q = fetch_question()
     if not q:
-        raise RuntimeError("A API de perguntas em português não respondeu.")
+        raise RuntimeError(
+    "Não foi possível obter uma pergunta da API no momento."
+)
     return q["category"], q["question"], q["answer"], 10, q["options"]
