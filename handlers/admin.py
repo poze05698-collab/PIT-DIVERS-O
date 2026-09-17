@@ -484,7 +484,7 @@ async def interact_send(c):
 
         category_filter = category_map.get(kind)
 
-        category, question, answer, _pts = choose_question(
+        category, question, answer, _pts, _options = choose_question(
             gid,
             category=category_filter
         )
