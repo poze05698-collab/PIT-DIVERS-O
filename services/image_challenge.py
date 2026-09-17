@@ -3,19 +3,14 @@
 import io
 import math
 import random
+import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 
 W, H = 1080, 720
 
 
 def _font(size: int):
-    """
-    Carrega uma fonte TTF grande.
-
-    A Discloud pode não ter fontes do sistema instaladas.
-    Nesse caso, o Pillow usa sua fonte FreeType interna em
-    tamanho real, evitando o texto minúsculo do fallback antigo.
-    """
+    """Carrega uma fonte escalável sem depender das fontes da Discloud."""
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -24,25 +19,16 @@ def _font(size: int):
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
         "/usr/local/share/fonts/DejaVuSans-Bold.ttf",
     ]
-
     for path in candidates:
         try:
             if os.path.isfile(path):
                 return ImageFont.truetype(path, size)
         except (OSError, IOError):
-            continue
-
-    # Fallback interno do Pillow.
-    # Pillow 11.x/12.x aceita size= e devolve uma fonte FreeType
-    # escalável quando disponível, sem depender do sistema operacional.
+            pass
     try:
         return ImageFont.load_default(size=size)
     except TypeError:
-        # Compatibilidade com versões antigas do Pillow.
-        pass
-
-    # Último recurso: nunca derrubar o bot.
-    return ImageFont.load_default()
+        return ImageFont.load_default()
 
 
 def _gradient():
@@ -106,35 +92,27 @@ def _fit_font(text, max_size=380, min_size=100, max_width=820):
 
 
 def make_number_image(number: int) -> io.BytesIO:
-    """Número enorme, central e propositalmente levemente embaçado."""
+    """Gera um número grande e nítido; o spoiler é aplicado pelo Telegram."""
     image = _base("DESAFIO VISUAL", "🔢 QUAL É O NÚMERO?")
     draw = ImageDraw.Draw(image, "RGBA")
     text = str(number)
-    font = _fit_font(text)
-
+    font = _fit_font(text, max_size=390, min_size=180, max_width=820)
     box = draw.textbbox((0, 0), text, font=font)
-    tw, th = box[2]-box[0], box[3]-box[1]
-    x = (W-tw)//2
-    y = 260 - th//2
-
-    # Glow e sombra.
-    for blur_radius, alpha in [(24, 55), (10, 90)]:
-        layer = Image.new("RGBA", (W, H), (0,0,0,0))
-        ld = ImageDraw.Draw(layer)
-        ld.text((x, y), text, font=font, fill=(65, 155, 255, alpha),
-                stroke_width=10, stroke_fill=(65, 155, 255, alpha))
-        layer = layer.filter(ImageFilter.GaussianBlur(blur_radius))
-        image = Image.alpha_composite(image.convert("RGBA"), layer).convert("RGB")
-
-    # Número com embaçado leve para ser identificável, sem ficar ilegível.
-    sharp = Image.new("RGBA", (W, H), (0,0,0,0))
-    sd = ImageDraw.Draw(sharp)
-    sd.text((x, y), text, font=font, fill=(245, 250, 255, 245),
-            stroke_width=8, stroke_fill=(40, 95, 180, 230))
-    blurred = sharp.filter(ImageFilter.GaussianBlur(radius=2.4))
-    image = Image.alpha_composite(image.convert("RGBA"), blurred).convert("RGB")
-
-    return _save(image)
+    tw, th = box[2] - box[0], box[3] - box[1]
+    area_top, area_bottom = 165, H - 125
+    center_y = (area_top + area_bottom) // 2
+    x = (W - tw) // 2
+    y = center_y - th // 2 - box[1]
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.text((x, y), text, font=font, fill=(70, 155, 255, 150), stroke_width=18, stroke_fill=(70, 155, 255, 150))
+    glow = glow.filter(ImageFilter.GaussianBlur(18))
+    image = Image.alpha_composite(image.convert("RGBA"), glow)
+    draw = ImageDraw.Draw(image, "RGBA")
+    draw.text((x + 8, y + 10), text, font=font, fill=(0, 0, 0, 190), stroke_width=12, stroke_fill=(0, 0, 0, 190))
+    draw.text((x, y), text, font=font, fill=(250, 252, 255, 255), stroke_width=9, stroke_fill=(45, 120, 235, 255))
+    draw.text((x, y - 2), text, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(135, 195, 255, 255))
+    return _save(image.convert("RGB"))
 
 
 def make_count_image(count: int, seed: int = 0) -> io.BytesIO:
