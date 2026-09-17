@@ -10,7 +10,13 @@ W, H = 1080, 720
 
 
 def _font(size: int):
-    """Carrega uma fonte escalável sem depender das fontes da Discloud."""
+    """
+    Carrega uma fonte TTF grande.
+
+    A Discloud pode não ter fontes do sistema instaladas.
+    Nesse caso, o Pillow usa sua fonte FreeType interna em
+    tamanho real, evitando o texto minúsculo do fallback antigo.
+    """
     candidates = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -19,34 +25,47 @@ def _font(size: int):
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
         "/usr/local/share/fonts/DejaVuSans-Bold.ttf",
     ]
+
     for path in candidates:
         try:
             if os.path.isfile(path):
                 return ImageFont.truetype(path, size)
         except (OSError, IOError):
-            pass
+            continue
+
+    # Fallback interno do Pillow.
+    # Pillow 11.x/12.x aceita size= e devolve uma fonte FreeType
+    # escalável quando disponível, sem depender do sistema operacional.
     try:
         return ImageFont.load_default(size=size)
     except TypeError:
-        return ImageFont.load_default()
+        # Compatibilidade com versões antigas do Pillow.
+        pass
+
+    # Último recurso: nunca derrubar o bot.
+    return ImageFont.load_default()
 
 
 def _gradient():
-    img = Image.new("RGB", (W, H))
+    """Cria o fundo em baixa resolução e amplia, evitando 777 mil cálculos Python."""
+    sw, sh = 180, 120
+    img = Image.new("RGB", (sw, sh))
     px = img.load()
-    for y in range(H):
-        t = y / (H - 1)
+    cx, cy = sw * .78, sh * .20
+    maxd = 108
+    for y in range(sh):
+        t = y / (sh - 1)
         r = int(9 + 18 * t)
         g = int(12 + 20 * t)
         b = int(28 + 42 * t)
-        for x in range(W):
-            glow = max(0, 1 - math.hypot(x - W * .78, y - H * .20) / 650)
+        for x in range(sw):
+            glow = max(0.0, 1.0 - math.hypot(x - cx, y - cy) / maxd)
             px[x, y] = (
                 min(255, int(r + 8 * glow)),
                 min(255, int(g + 22 * glow)),
                 min(255, int(b + 45 * glow)),
             )
-    return img
+    return img.resize((W, H), Image.Resampling.BILINEAR)
 
 
 def _base(label: str, subtitle: str):
@@ -92,27 +111,34 @@ def _fit_font(text, max_size=380, min_size=100, max_width=820):
 
 
 def make_number_image(number: int) -> io.BytesIO:
-    """Gera um número grande e nítido; o spoiler é aplicado pelo Telegram."""
+    """Número enorme, central e totalmente nítido."""
     image = _base("DESAFIO VISUAL", "🔢 QUAL É O NÚMERO?")
     draw = ImageDraw.Draw(image, "RGBA")
     text = str(number)
-    font = _fit_font(text, max_size=390, min_size=180, max_width=820)
+    font = _fit_font(text)
+
     box = draw.textbbox((0, 0), text, font=font)
-    tw, th = box[2] - box[0], box[3] - box[1]
-    area_top, area_bottom = 165, H - 125
-    center_y = (area_top + area_bottom) // 2
-    x = (W - tw) // 2
-    y = center_y - th // 2 - box[1]
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.text((x, y), text, font=font, fill=(70, 155, 255, 150), stroke_width=18, stroke_fill=(70, 155, 255, 150))
-    glow = glow.filter(ImageFilter.GaussianBlur(18))
-    image = Image.alpha_composite(image.convert("RGBA"), glow)
-    draw = ImageDraw.Draw(image, "RGBA")
-    draw.text((x + 8, y + 10), text, font=font, fill=(0, 0, 0, 190), stroke_width=12, stroke_fill=(0, 0, 0, 190))
-    draw.text((x, y), text, font=font, fill=(250, 252, 255, 255), stroke_width=9, stroke_fill=(45, 120, 235, 255))
-    draw.text((x, y - 2), text, font=font, fill=(255, 255, 255, 255), stroke_width=3, stroke_fill=(135, 195, 255, 255))
-    return _save(image.convert("RGB"))
+    tw, th = box[2]-box[0], box[3]-box[1]
+    x = (W-tw)//2
+    y = 260 - th//2
+
+    # Glow e sombra.
+    for blur_radius, alpha in [(24, 55), (10, 90)]:
+        layer = Image.new("RGBA", (W, H), (0,0,0,0))
+        ld = ImageDraw.Draw(layer)
+        ld.text((x, y), text, font=font, fill=(65, 155, 255, alpha),
+                stroke_width=10, stroke_fill=(65, 155, 255, alpha))
+        layer = layer.filter(ImageFilter.GaussianBlur(blur_radius))
+        image = Image.alpha_composite(image.convert("RGBA"), layer).convert("RGB")
+
+    # Número final sempre nítido. O Telegram já usa spoiler para ocultar a imagem.
+    sharp = Image.new("RGBA", (W, H), (0,0,0,0))
+    sd = ImageDraw.Draw(sharp)
+    sd.text((x, y), text, font=font, fill=(250, 252, 255, 255),
+            stroke_width=8, stroke_fill=(40, 95, 180, 255))
+    image = Image.alpha_composite(image.convert("RGBA"), sharp).convert("RGB")
+
+    return _save(image)
 
 
 def make_count_image(count: int, seed: int = 0) -> io.BytesIO:
