@@ -1,3 +1,4 @@
+import asyncio
 import random
 
 from aiogram import Router, F
@@ -484,10 +485,17 @@ async def interact_send(c):
 
         category_filter = category_map.get(kind)
 
-        category, question, answer, _pts, _options = choose_question(
-            gid,
-            category=category_filter
-        )
+        try:
+            category, question, answer, _pts, _options = await asyncio.to_thread(
+                choose_question,
+                gid,
+                category=category_filter
+            )
+        except Exception:
+            return await c.answer(
+                "Não consegui gerar esse desafio agora. Tente novamente em alguns segundos.",
+                show_alert=True
+            )
 
         from handlers.challenge import send_text_challenge
 
@@ -498,7 +506,8 @@ async def interact_send(c):
             question,
             answer,
             points,
-            "🔥 DESAFIO RELÂMPAGO"
+            "🔥 DESAFIO RELÂMPAGO",
+            _options
         )
 
     await safe_edit(
