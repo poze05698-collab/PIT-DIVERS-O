@@ -11,7 +11,12 @@ import urllib.parse
 import html
 
 # API atual
-API_URL = "https://www.codesnippets.dev.br/public/api/quizzes/v1/questions"
+API_URLS = [
+    "https://www.codesnippets.dev.br/public/api/quizzes/v1/questions",
+    "https://www.codesnippets.dev.br/public/api/quizzes/v1/questions/search?q=Brasil",
+    "https://www.codesnippets.dev.br/public/api/quizzes/v1/questions/search?q=futebol",
+    "https://www.codesnippets.dev.br/public/api/quizzes/v1/questions/search?q=musica",
+]
 
 _TIMEOUT = 15
 _CACHE = []
@@ -287,23 +292,20 @@ def normalize(item):
 
 def _load():
     global _CACHE
-
-    data = _request(API_URL)
-
-    raw_questions = _unwrap(data)
-
-    parsed = []
-
-    for item in raw_questions:
-
-        question = normalize(item)
-
-        if question:
-            parsed.append(question)
-
-    if parsed:
-        _CACHE = parsed
-
+    for url in API_URLS:
+        try:
+            data = _request(url)
+            parsed = []
+            for item in _unwrap(data):
+                question = normalize(item)
+                if question:
+                    parsed.append(question)
+            if parsed:
+                _CACHE = parsed
+                return _CACHE
+        except Exception:
+            continue
+    _CACHE = []
     return _CACHE
 
 
