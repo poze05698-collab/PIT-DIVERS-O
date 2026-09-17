@@ -151,12 +151,12 @@ async def image(c,state):
 @router.callback_query(F.data.startswith('adm:morningtime:'))
 async def morningtime(c,state):
     if not await require_callback(c):return
-    gid=int(c.data.split(':')[2]);await ask(c,state,gid,'morningtime','🕗 <b>HORÁRIO DO BOM DIA</b>','08:00')
+    gid=int(c.data.split(':')[2]);await ask(c,state,gid,'morningtime','🕗 <b>HORÁRIO DO BOM DIA</b>','10.30 ou 10:30')
 
 @router.callback_query(F.data.startswith('adm:nighttime:'))
 async def nighttime(c,state):
     if not await require_callback(c):return
-    gid=int(c.data.split(':')[2]);await ask(c,state,gid,'nighttime','🕙 <b>HORÁRIO DA BOA NOITE</b>','22:00')
+    gid=int(c.data.split(':')[2]);await ask(c,state,gid,'nighttime','🕙 <b>HORÁRIO DA BOA NOITE</b>','22.00 ou 22:00')
 
 @router.callback_query(F.data.startswith('adm:prize:'))
 async def prize_cb(c,state):
@@ -183,7 +183,13 @@ async def save_config(m:Message,state:FSMContext):
         elif kind=='image':
             v=int(text);assert 0<=v<=100;setting(gid,'image_chance',v);msg='Chance visual salva.'
         elif kind in ('morningtime','nighttime'):
-            h,mi=map(int,text.split(':'));assert 0<=h<=23 and 0<=mi<=59;setting(gid,kind,text);msg='Horário salvo.'
+            time_text=text.strip().replace('.', ':')
+            parts=time_text.split(':')
+            if len(parts)!=2: raise ValueError
+            h,mi=map(int,parts)
+            assert 0<=h<=23 and 0<=mi<=59
+            normalized=f'{h:02d}:{mi:02d}'
+            setting(gid,kind,normalized);msg='Horário salvo.'
         elif kind=='prize':
             if not text:raise ValueError
             prize(gid,text);msg='Prêmio salvo.'
