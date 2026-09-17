@@ -37,7 +37,7 @@ async def _automatic_challenge(bot, group):
             return
         except Exception:
             log.exception('Falha ao gerar desafio visual no grupo %s',gid)
-    category,question,answer,_,options=choose_question(gid)
+    category,question,answer,_,options=await asyncio.to_thread(choose_question,gid)
     points=max(1,int(group['challenge_points'] or 10))
     from handlers.challenge import send_text_challenge
     await send_text_challenge(bot,gid,category,question,answer,points,'DESAFIO AUTOMÁTICO', options)
@@ -47,12 +47,11 @@ async def scheduler_loop(bot:Bot):
     while True:
         try:
             now=datetime.now(tz); now_min=now.hour*60+now.minute; minute_key=now.strftime('%Y-%m-%d-%H-%M')
-            for g in all_groups():
+            async def process_group(g):
                 gid=g['id']
-                if not bool(g['enabled']):continue
+                if not bool(g['enabled']): return
                 start=hm(g['start_time'],(10,0)); end=hm(g['end_time'],(0,0))
                 inside=in_window(now_min,start,end)
-                # Bom dia/boa noite are independent of the interaction window.
                 if now_min==hm(g['morning_time'],(8,0)) and bool(g['morning']):
                     marker=f'{gid}:{minute_key}:morning'
                     if marker not in seen:
@@ -61,18 +60,16 @@ async def scheduler_loop(bot:Bot):
                     marker=f'{gid}:{minute_key}:night'
                     if marker not in seen:
                         await bot.send_message(gid,'🌙 <b>Boa noite, família PITBULL PRIME!</b>\nDescansem bem. Amanhã tem mais diversão! 😴✨');seen.add(marker)
-                # Outside the configured interaction window, the bot sends no challenges.
-                if not inside:
-                    # Um desafio ativo NÃO expira ao fim do horário.
-                    # Ele continua válido até alguém acertar.
-                    continue
+                if not inside: return
                 interval=max(1,int(g['challenge_interval'] or 25))
-                # Anchored to start time: with 10:00 + 25 min => 10:00, 10:25, 10:50, 11:15...
                 if (now_min-start)%interval==0:
                     marker=f'{gid}:{minute_key}:challenge'
                     if marker not in seen:
-                        await _automatic_challenge(bot,g);seen.add(marker)
-                # Sunday at 23:59 closes the ISO week. The next week's points are untouched.
+                        try:
+                            await _automatic_challenge(bot,g)
+                            seen.add(marker)
+                        except Exception:
+                            log.exception('Falha no desafio automático do grupo %s',gid)
                 if now.weekday()==6 and now.hour==23 and now.minute==59:
                     marker=f'{gid}:{minute_key}:week'
                     if marker not in seen:
@@ -81,6 +78,8 @@ async def scheduler_loop(bot:Bot):
                             name=f"@{result['username']}" if result['username'] else result['first_name']
                             await bot.send_message(gid,f'🏆 <b>SEMANA ENCERRADA!</b>\n\n🥇 {name}\n⭐ {result["points"]} pontos\n🎁 {result["prize"]}\n\n🔥 Nova semana iniciada!')
                         seen.add(marker)
+
+            await asyncio.gather(*(process_group(g) for g in all_groups()), return_exceptions=True)
             if len(seen)>20000:seen.clear()
         except Exception:log.exception('Erro no scheduler')
         await asyncio.sleep(20)
