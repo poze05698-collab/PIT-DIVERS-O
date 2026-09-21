@@ -1,0 +1,34 @@
+PIT DIVERSAO — AUDITORIA PROFUNDA + CORRECOES DE TEMPORADA/PONTOS
+===============================================================
+
+FONTE: projeto enviado pelo usuario nesta rodada.
+
+CORRECOES
+1. Encerramento semanal automatico removido do scheduler.
+2. Temporada agora e controlada por season_control e so muda pelo painel Admin.
+3. Fechamento manual preserva a temporada antiga e abre uma nova sem apagar pontos.
+4. Ranking/meuspontos/add/achievements passam a usar a temporada ativa, e nao a virada automatica do calendario.
+5. Criado points_ledger para auditar toda alteracao futura de pontos.
+6. Saldos existentes recebem um registro de auditoria de migracao sem alterar os valores.
+7. Painel Admin ganhou Usuarios / Pontos, consulta paginada, detalhes, historico e envio de pontos.
+8. O anuncio de encerramento foi ampliado com temporada, participantes, total de pontos, TOP 3, premios e nova temporada.
+9. Textos que diziam que o fechamento acontecia automaticamente no domingo foram atualizados.
+10. Mantida preservacao aditiva do SQLite.
+
+TESTES
+- ZIP integrity: OK
+- Python compileall: OK
+- init_db em banco novo: OK
+- migracao de banco legado com pontos: OK
+- saldo legado preservado: OK
+- add atomico + ledger: OK
+- fechamento manual + abertura de nova temporada: OK
+- pontos antigos continuam consultaveis: OK
+- novo saldo separado na nova temporada: OK
+- total acumulado continua disponivel: OK
+- nenhum .db real incluido no pacote.
+
+LIMITACAO
+Nao ha banco real do Discloud neste ZIP. Portanto nao e possivel identificar nem restaurar, a partir deste arquivo sozinho, o usuario especifico que tinha 340 e ficou com 40. O projeto agora preserva os saldos e cria auditoria para impedir/diagnosticar novas perdas. Para restaurar exatamente os pontos ja desaparecidos, e necessario o data/pit_diversao.db atual do Discloud (ou um backup desse banco).
+
+NAO APAGAR O BANCO EXISTENTE DO DISCloud.
